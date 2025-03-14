@@ -29,12 +29,20 @@ def handle_chat(data):
     # data is expected to be a dict with 'username', 'message', and 'timestamp'
     print(f"Message from {data['username']}: {data['message']}")
     
-    # Add server timestamp if not provided
     if 'timestamp' not in data:
         data['timestamp'] = datetime.now().isoformat()
         
-    # Broadcast the message to all connected clients
     emit('message', data, broadcast=True)
+
+@socketio.on('media')
+def handle_media(data):
+    # data should include 'username', 'media_type', and 'media_data' (base64 string)
+    print(f"Media from {data['username']}: {data['media_type']}")
+    
+    if 'timestamp' not in data:
+        data['timestamp'] = datetime.now().isoformat()
+    
+    emit('media_message', data, broadcast=True)
 
 @socketio.on('typing')
 def handle_typing(data):

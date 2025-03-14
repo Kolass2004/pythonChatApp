@@ -189,7 +189,7 @@
       box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.3);
     }
 
-    .input-form input {
+    .input-form input[type="text"] {
       flex: 1;
       border: none;
       background: transparent;
@@ -211,6 +211,7 @@
       justify-content: center;
       cursor: pointer;
       transition: var(--transition);
+      margin-right: 5px;
     }
 
     .input-form button:hover {
@@ -307,6 +308,11 @@
       padding: 5px 10px;
       border-radius: 15px;
     }
+
+    /* Recording indicator styling */
+    #record-btn.recording {
+      background-color: #f44336;
+    }
   </style>
 </head>
 <body>
@@ -322,7 +328,7 @@
         <span>Welcome to the chat room!</span>
       </div>
       <!-- Messages will appear here -->
-      <div class="typing-indicator" id="typing-indicator" style="display: none;">
+      <div class="typing-indicator" id="typing-indicator">
         <span></span>
         <span></span>
         <span></span>
@@ -331,15 +337,17 @@
     </div>
     <div class="chat-input">
       <form class="input-form" id="chat-form">
-        <input 
-          id="myMessage" 
-          autocomplete="off" 
-          placeholder="Type your message..." 
-          autofocus
-        />
-        <button type="submit">
+        <button type="button" id="record-btn" title="Record Voice">
+          <i class="fas fa-microphone"></i>
+        </button>
+        <button type="button" id="media-btn" title="Send Media">
+          <i class="fas fa-paperclip"></i>
+        </button>
+        <input type="text" id="myMessage" autocomplete="off" placeholder="Type your message..." autofocus />
+        <button type="submit" title="Send Message">
           <i class="fas fa-paper-plane"></i>
         </button>
+        <input type="file" id="media-input" accept="image/*,video/*,audio/*" style="display:none" multiple>
       </form>
     </div>
   </div>
@@ -349,19 +357,18 @@
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script>
     $(document).ready(function() {
-      // Prompt the user to enter a username
+      // Prompt the user for a username
       let username = prompt("Please enter your username:", "Guest");
       if (!username || username.trim() === '') {
         username = "Guest" + Math.floor(Math.random() * 1000);
       }
       
-      // Show a notification that the user joined
+      // Notify that the user has joined
       const joinNotification = $('<div class="notification"><span>' + username + ' joined the chat</span></div>');
       $('#chat-window').append(joinNotification);
 
       const socket = io();
       
-      // Connection status handling
       socket.on('connect', function() {
         $('#online-status').text('Connected');
         $('.online-indicator span').css('background-color', '#4CAF50');
@@ -372,69 +379,82 @@
         $('.online-indicator span').css('background-color', '#f44336');
       });
 
-      // Function to format the timestamp
+      // Helper function to format timestamps
       function formatTimestamp(date) {
         const hours = date.getHours().toString().padStart(2, '0');
         const minutes = date.getMinutes().toString().padStart(2, '0');
         return `${hours}:${minutes}`;
       }
 
-      // Listen for messages from the server
+      // Listen for text messages
       socket.on('message', function(data) {
-        // Determine the message alignment based on sender
         const alignment = (data.username === username) ? "self" : "other";
-        
-        // Add the message directly without grouping
         const messageEl = $('<div>').addClass('message ' + alignment);
-        
-        // Show username for messages from others
         if (alignment === 'other') {
           const usernameEl = $('<div>').addClass('username').text(data.username);
           messageEl.append(usernameEl);
         }
-        
-        // Message text
         const messageText = $('<div>').addClass('message-text').text(data.message);
         messageEl.append(messageText);
-        
-        // Timestamp
         const now = new Date();
         const timestamp = $('<div>').addClass('timestamp').text(formatTimestamp(now));
         messageEl.append(timestamp);
-        
         $('#chat-window').append(messageEl);
-        
-        // Auto-scroll to the bottom
         $('#chat-window').scrollTop($('#chat-window')[0].scrollHeight);
       });
 
-      // Emit the chat event when the form is submitted
+      // Listen for media messages (voice, image, video, file)
+      socket.on('media_message', function(data) {
+        const alignment = (data.username === username) ? "self" : "other";
+        const messageEl = $('<div>').addClass('message ' + alignment);
+        if (alignment === 'other') {
+          const usernameEl = $('<div>').addClass('username').text(data.username);
+          messageEl.append(usernameEl);
+        }
+        if (data.media_type === 'audio') {
+          const audioEl = $('<audio controls></audio>').attr('src', data.media_data);
+          messageEl.append(audioEl);
+        } else if (data.media_type === 'image') {
+          const imgEl = $('<img>').attr('src', data.media_data).css('max-width', '200px');
+          messageEl.append(imgEl);
+        } else if (data.media_type === 'video') {
+          const videoEl = $('<video controls></video>').attr('src', data.media_data).css('max-width', '200px');
+          messageEl.append(videoEl);
+        } else if (data.media_type === 'file') {
+          const linkEl = $('<a></a>')
+            .attr('href', data.media_data)
+            .attr('download', data.filename)
+            .text("Download " + data.filename);
+          messageEl.append(linkEl);
+        }
+        const now = new Date();
+        const timestamp = $('<div>').addClass('timestamp').text(formatTimestamp(now));
+        messageEl.append(timestamp);
+        $('#chat-window').append(messageEl);
+        $('#chat-window').scrollTop($('#chat-window')[0].scrollHeight);
+      });
+
+      // Send text messages on form submission
       $('#chat-form').submit(function(e) {
         e.preventDefault();
         const message = $('#myMessage').val();
         if (message.trim() === '') return;
-        
-        // Send the message along with the username
         socket.emit('chat', { 
           username: username, 
           message: message,
           timestamp: new Date().toISOString()
         });
-        
         $('#myMessage').val('');
         $('#myMessage').focus();
       });
       
-      // Simple typing indicator
+      // Typing indicator
       let typingTimer;
       $('#myMessage').on('input', function() {
         clearTimeout(typingTimer);
-        
-        // Only emit typing event if there's content
         if ($(this).val().trim() !== '') {
           socket.emit('typing', { username: username });
         }
-        
         typingTimer = setTimeout(function() {
           socket.emit('stop-typing', { username: username });
         }, 1000);
@@ -449,6 +469,83 @@
       
       socket.on('user-stop-typing', function() {
         $('#typing-indicator').hide();
+      });
+
+      // Voice recording feature using MediaRecorder API
+      let mediaRecorder;
+      let audioChunks = [];
+      let isRecording = false;
+      
+      $('#record-btn').click(function() {
+        if (!isRecording) {
+          navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(stream => {
+              mediaRecorder = new MediaRecorder(stream);
+              mediaRecorder.start();
+              isRecording = true;
+              $('#record-btn').addClass('recording');
+              mediaRecorder.addEventListener("dataavailable", event => {
+                audioChunks.push(event.data);
+              });
+              mediaRecorder.addEventListener("stop", () => {
+                const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                audioChunks = [];
+                const reader = new FileReader();
+                reader.readAsDataURL(audioBlob);
+                reader.onloadend = function() {
+                  const base64data = reader.result;
+                  socket.emit('media', {
+                    username: username,
+                    media_type: 'audio',
+                    media_data: base64data,
+                    timestamp: new Date().toISOString()
+                  });
+                }
+              });
+            })
+            .catch(err => {
+              console.error('Error accessing audio devices:', err);
+            });
+        } else {
+          mediaRecorder.stop();
+          isRecording = false;
+          $('#record-btn').removeClass('recording');
+        }
+      });
+
+      // Media file sharing feature
+      $('#media-btn').click(function() {
+        $('#media-input').click();
+      });
+      
+      $('#media-input').on('change', function(e) {
+        const files = e.target.files;
+        for (let i = 0; i < files.length; i++) {
+          let file = files[i];
+          let reader = new FileReader();
+          reader.onload = function(evt) {
+            const base64data = evt.target.result;
+            let media_type = '';
+            if (file.type.startsWith('image/')) {
+              media_type = 'image';
+            } else if (file.type.startsWith('video/')) {
+              media_type = 'video';
+            } else if (file.type.startsWith('audio/')) {
+              media_type = 'audio';
+            } else {
+              media_type = 'file';
+            }
+            socket.emit('media', {
+              username: username,
+              media_type: media_type,
+              media_data: base64data,
+              timestamp: new Date().toISOString(),
+              filename: file.name,
+              filetype: file.type
+            });
+          }
+          reader.readAsDataURL(file);
+        }
       });
     });
   </script>
