@@ -347,7 +347,8 @@
         <button type="submit" title="Send Message">
           <i class="fas fa-paper-plane"></i>
         </button>
-        <input type="file" id="media-input" accept="image/*,video/*,audio/*" style="display:none" multiple>
+        <!-- Accept all file types -->
+        <input type="file" id="media-input" accept="*/*" style="display:none" multiple>
       </form>
     </div>
   </div>
@@ -403,7 +404,7 @@
         $('#chat-window').scrollTop($('#chat-window')[0].scrollHeight);
       });
 
-      // Listen for media messages (voice, image, video, file)
+      // Listen for media messages (voice, image, video, document, etc.)
       socket.on('media_message', function(data) {
         const alignment = (data.username === username) ? "self" : "other";
         const messageEl = $('<div>').addClass('message ' + alignment);
@@ -411,7 +412,8 @@
           const usernameEl = $('<div>').addClass('username').text(data.username);
           messageEl.append(usernameEl);
         }
-        if (data.media_type === 'audio') {
+        if (data.media_type === 'audio' && data.filetype !== 'application/pdf') {
+          // Voice message or audio file
           const audioEl = $('<audio controls></audio>').attr('src', data.media_data);
           messageEl.append(audioEl);
         } else if (data.media_type === 'image') {
@@ -421,11 +423,23 @@
           const videoEl = $('<video controls></video>').attr('src', data.media_data).css('max-width', '200px');
           messageEl.append(videoEl);
         } else if (data.media_type === 'file') {
-          const linkEl = $('<a></a>')
-            .attr('href', data.media_data)
-            .attr('download', data.filename)
-            .text("Download " + data.filename);
-          messageEl.append(linkEl);
+          // For documents and other file types
+          if (data.filetype === "application/pdf") {
+            // Inline PDF embed
+            const embedEl = $('<embed>')
+              .attr('src', data.media_data)
+              .attr('type', 'application/pdf')
+              .css('max-width', '200px')
+              .css('max-height', '300px');
+            messageEl.append(embedEl);
+          } else {
+            // Other documents (Word, Excel, etc.) – show a download link
+            const linkEl = $('<a></a>')
+              .attr('href', data.media_data)
+              .attr('download', data.filename)
+              .text("Download " + data.filename);
+            messageEl.append(linkEl);
+          }
         }
         const now = new Date();
         const timestamp = $('<div>').addClass('timestamp').text(formatTimestamp(now));
@@ -498,7 +512,9 @@
                     username: username,
                     media_type: 'audio',
                     media_data: base64data,
-                    timestamp: new Date().toISOString()
+                    timestamp: new Date().toISOString(),
+                    filename: "voice_message.webm",
+                    filetype: "audio/webm"
                   });
                 }
               });
